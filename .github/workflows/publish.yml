@@ -82,11 +82,11 @@ jobs:
           # 发布所有包
           for pkg in packages/*; do
             if [ -f "$pkg/package.json" ]; then
-              PKG_NAME=$(node -e "console.log(require('$pkg/package.json').name)")
+              PKG_NAME=$(node -e "const fs = require('fs'); const path = require('path'); const pkgPath = path.resolve('$pkg/package.json'); const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')); console.log(pkg.name)")
               echo "Publishing $PKG_NAME..."
               cd "$pkg"
               npm publish --tag "commit-$SHORT_COMMIT" || echo "Failed to publish $PKG_NAME (might already exist)"
-              cd ../..
+              cd - > /dev/null
             fi
           done
         env:
