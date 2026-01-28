@@ -1,0 +1,101 @@
+name: Publish Packages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'packages/**'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@dinglanTechnology'
+          cache: 'pnpm'
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Get git short commit hash
+        id: git-commit
+        run: |
+          SHORT_COMMIT=$(git rev-parse --short HEAD)
+          echo "commit=$SHORT_COMMIT" >> $GITHUB_OUTPUT
+          echo "Using commit hash: $SHORT_COMMIT"
+
+      - name: Update package versions
+        run: |
+          SHORT_COMMIT="${{ steps.git-commit.outputs.commit }}"
+          echo "Updating all package versions to use commit: $SHORT_COMMIT"
+          node scripts/update-versions.js "$SHORT_COMMIT"
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          echo "@dinglanTechnology:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Publish to GitHub Packages
+        run: |
+          SHORT_COMMIT="${{ steps.git-commit.outputs.commit }}"
+          echo "Publishing packages with version 0.0.0-$SHORT_COMMIT to GitHub Packages"
+          
+          # 发布所有包
+          for pkg in packages/*; do
+            if [ -f "$pkg/package.json" ]; then
+              PKG_NAME=$(node -e "const fs = require('fs'); const path = require('path'); const pkgPath = path.resolve('$pkg/package.json'); const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')); console.log(pkg.name)")
+              echo "Publishing $PKG_NAME..."
+              cd "$pkg"
+              npm publish --tag "commit-$SHORT_COMMIT" || echo "Failed to publish $PKG_NAME (might already exist)"
+              cd - > /dev/null
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create git tag
+        run: |
+          SHORT_COMMIT="${{ steps.git-commit.outputs.commit }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v0.0.0-$SHORT_COMMIT" -m "Release packages at commit $SHORT_COMMIT"
+          git push origin "v0.0.0-$SHORT_COMMIT"
