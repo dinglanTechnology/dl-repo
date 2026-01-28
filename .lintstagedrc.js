@@ -4,4 +4,4 @@ module.exports = {
   '**/*.{ts,tsx}': ['eslint --fix', 'prettier --write'],
   // JavaScript、JSON、Markdown 文件：prettier 格式化
   '**/*.{js,jsx,json,md}': ['prettier --write'],
-};
+}
