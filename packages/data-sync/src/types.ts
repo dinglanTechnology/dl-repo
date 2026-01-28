@@ -11,20 +11,24 @@ export interface DatabaseConfig {
 }
 
 /**
- * 数据同步选项接口
+ * 数据同步选项基础字段
  */
-export interface DataSyncOptions {
+interface DataSyncOptionsBase {
   sourceConfig: DatabaseConfig
   targetConfig: DatabaseConfig
-  action?: 'dump' | 'restore' | 'sync' | 'rollback'
   dryRun?: boolean
   verbose?: boolean
   skipTables?: string[]
   onlyTables?: string[]
-  backup?: boolean
-  force?: boolean
   dumpFolder?: string
 }
+
+/**
+ * 数据同步选项：仅支持 dump | restore | sync；restore 时必须传 restoreDumpFile
+ */
+export type DataSyncOptions =
+  | (DataSyncOptionsBase & { action?: 'dump' | 'sync' })
+  | (DataSyncOptionsBase & { action: 'restore'; restoreDumpFile: string })
 
 /**
  * 数据库类型枚举

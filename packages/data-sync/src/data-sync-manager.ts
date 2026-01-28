@@ -17,6 +17,91 @@ export class DataSyncManager {
   }
 
   /**
+   * 将可手动执行的命令输出到终端，方便用户复制使用
+   */
+  private logManualCommands(context: {
+    type: 'dump' | 'restore'
+    dbConfig: DatabaseConfig
+    dumpFile?: string
+    dumpFileName?: string
+  }) {
+    const c = context.dbConfig
+    const dbType = this.detectDatabaseType(c)
+    const pwd = '***' // 不输出真实密码
+
+    console.log(chalk.yellow('\n--- 可手动执行以下命令 ---'))
+    if (context.type === 'dump') {
+      const outFile = context.dumpFileName ?? `${c.database}.dump`
+      if (dbType === DatabaseType.POSTGRESQL) {
+        console.log(
+          chalk.gray(
+            `# PostgreSQL 备份\nexport PGPASSWORD="${pwd}" && pg_dump -h ${c.host} -p ${c.port} -U ${c.username} -Fc -f ${outFile} ${c.database}`
+          )
+        )
+      } else {
+        console.log(
+          chalk.gray(
+            `# MySQL 备份\nmysqldump ${c.database} --result-file=${outFile} --user=${c.username} --host=${c.host} --port=${c.port} --password=${pwd} --set-gtid-purged=OFF --single-transaction --routines --triggers`
+          )
+        )
+      }
+    } else {
+      const dumpFile = context.dumpFile!
+      if (dbType === DatabaseType.POSTGRESQL) {
+        console.log(
+          chalk.gray(
+            `# PostgreSQL 恢复\nexport PGPASSWORD="${pwd}" && pg_restore -h ${c.host} -p ${c.port} -U ${c.username} -d ${c.database} --clean --if-exists --no-owner "${dumpFile}"`
+          )
+        )
+        console.log(chalk.gray('# 如需强制删除并重建数据库后恢复，可依次执行：'))
+        console.log(
+          chalk.gray(
+            `# 1. 终止连接\nexport PGPASSWORD="${pwd}" && psql -h ${c.host} -p ${c.port} -U ${c.username} -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${c.database}' AND pid <> pg_backend_pid();"`
+          )
+        )
+        console.log(
+          chalk.gray(
+            `# 2. 删除数据库\nexport PGPASSWORD="${pwd}" && psql -h ${c.host} -p ${c.port} -U ${c.username} -d postgres -c "DROP DATABASE IF EXISTS \\"${c.database}\\";"`
+          )
+        )
+        console.log(
+          chalk.gray(
+            `# 3. 创建数据库\nexport PGPASSWORD="${pwd}" && psql -h ${c.host} -p ${c.port} -U ${c.username} -d postgres -c "CREATE DATABASE \\"${c.database}\\";"`
+          )
+        )
+        console.log(
+          chalk.gray(
+            `# 4. 恢复数据\nexport PGPASSWORD="${pwd}" && pg_restore -h ${c.host} -p ${c.port} -U ${c.username} -d ${c.database} --clean --if-exists --no-owner "${dumpFile}"`
+          )
+        )
+      } else {
+        console.log(
+          chalk.gray(
+            `# MySQL 恢复\nmysql --user=${c.username} --host=${c.host} --port=${c.port} --password=${pwd} ${c.database} < "${dumpFile}"`
+          )
+        )
+        console.log(chalk.gray('# 如需强制删除并重建数据库后恢复，可依次执行：'))
+        console.log(
+          chalk.gray(
+            `# 1. 删除数据库\nmysql --user=${c.username} --host=${c.host} --port=${c.port} --password=${pwd} -e "DROP DATABASE IF EXISTS ${c.database};"`
+          )
+        )
+        console.log(
+          chalk.gray(
+            `# 2. 创建数据库\nmysql --user=${c.username} --host=${c.host} --port=${c.port} --password=${pwd} -e "CREATE DATABASE IF NOT EXISTS ${c.database} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"`
+          )
+        )
+        console.log(
+          chalk.gray(
+            `# 3. 恢复数据\nmysql --user=${c.username} --host=${c.host} --port=${c.port} --password=${pwd} ${c.database} < "${dumpFile}"`
+          )
+        )
+      }
+    }
+    console.log(chalk.yellow('---\n'))
+  }
+
+  /**
    * 检测数据库类型
    */
   private detectDatabaseType(dbConfig: DatabaseConfig): DatabaseType {
@@ -62,27 +147,19 @@ export class DataSyncManager {
             dumpFolder: options.dumpFolder,
           })
           break
-        case 'restore':
-          this.restoreData(sourceConfig, targetConfig, {
+        case 'restore': {
+          const dumpFile = (options as { restoreDumpFile: string }).restoreDumpFile
+          this.restoreData(targetConfig, dumpFile, {
             dryRun,
             verbose: options.verbose,
-            force: options.force,
-            dumpFolder: options.dumpFolder,
           })
           break
-        case 'rollback':
-          this.rollbackData(targetConfig, {
-            dryRun,
-            verbose: options.verbose,
-            dumpFolder: options.dumpFolder,
-          })
-          break
+        }
         case 'sync':
         default:
           this.performSync(sourceConfig, targetConfig, {
             dryRun,
             verbose: options.verbose,
-            force: options.force,
             dumpFolder: options.dumpFolder,
           })
           break
@@ -97,14 +174,23 @@ export class DataSyncManager {
 
   /**
    * 备份数据
+   *
+   * 如需手动执行备份命令，可参考以下示例：
+   *
+   * PostgreSQL:
+   *   export PGPASSWORD="password" && pg_dump -h host -p 5432 -U username -Fc -f dump_file.dump database
+   *
+   * MySQL:
+   *   mysqldump database --result-file=dump_file.sql --user=username --host=host --port=3306 --password=password --set-gtid-purged=OFF --single-transaction --routines --triggers
    */
+  dumpData(
+    sourceConfig: DatabaseConfig,
+    options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string; dumpFileName?: string } = {}
+  ) {
+    const { dryRun = false, verbose = false, dumpFolder = './dumps', dumpFileName } = options
 
-  dumpData(sourceConfig: DatabaseConfig, options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string } = {}) {
-    const { dryRun = false, verbose = false, dumpFolder = './dumps' } = options
-
-    const dbType = this.detectDatabaseType(sourceConfig)
-    const extension = dbType === DatabaseType.MYSQL ? 'sql' : 'backup'
-    const dumpFile = path.resolve(dumpFolder, `${sourceConfig.database}.${extension}`)
+    const fileName = dumpFileName ?? `${sourceConfig.database}.dump`
+    const dumpFile = path.resolve(dumpFolder, fileName)
 
     if (dryRun) {
       console.log(chalk.blue(`🔍 [预览模式] 将备份数据到: ${dumpFile}`))
@@ -133,6 +219,8 @@ export class DataSyncManager {
         console.log(chalk.gray(`  数据库: ${sourceConfig.database}`))
       }
 
+      this.logManualCommands({ type: 'dump', dbConfig: sourceConfig, dumpFileName: fileName })
+
       return dumpFile
     } catch (error) {
       this.spinner.fail(`❌ 数据备份失败: ${error instanceof Error ? error.message : String(error)}`)
@@ -141,26 +229,31 @@ export class DataSyncManager {
   }
 
   /**
-   * 恢复数据
+   * 恢复数据（必须传入 dump 文件路径）
+   *
+   * 如需手动执行恢复命令，可参考以下示例：
+   *
+   * PostgreSQL:
+   *   export PGPASSWORD="password" && pg_restore -h host -p 5432 -U username -d database --clean --if-exists --no-owner dump_file.dump
+   *
+   * MySQL:
+   *   mysql --user=username --host=host --port=3306 --password=password database < dump_file.sql
    */
-  async restoreData(
-    sourceConfig: DatabaseConfig,
+
+  restoreData(
     targetConfig: DatabaseConfig,
+    dumpFile: string,
     options: {
       dryRun?: boolean
       verbose?: boolean
-      force?: boolean
-      dumpFolder?: string
     } = {}
-  ): Promise<void> {
-    const { dryRun = false, verbose = false, force = false, dumpFolder = './dumps' } = options
+  ) {
+    const { dryRun = false, verbose = false } = options
 
-    const dbType = this.detectDatabaseType(sourceConfig)
-    const extension = dbType === DatabaseType.MYSQL ? 'sql' : 'backup'
-    const dumpFile = path.resolve(dumpFolder, `${sourceConfig.database}.${extension}`)
+    const resolvedDumpFile = path.isAbsolute(dumpFile) ? dumpFile : path.resolve(dumpFile)
 
     if (dryRun) {
-      console.log(chalk.blue(`🔍 [预览模式] 将从 ${dumpFile} 恢复数据`))
+      console.log(chalk.blue(`🔍 [预览模式] 将从 ${resolvedDumpFile} 恢复数据`))
       if (verbose) {
         console.log(chalk.gray(`  目标数据库: ${targetConfig.database}`))
         console.log(chalk.gray(`  目标主机: ${targetConfig.host}:${targetConfig.port}`))
@@ -168,74 +261,26 @@ export class DataSyncManager {
       return
     }
 
-    if (!existsSync(dumpFile)) {
-      throw new Error(`备份文件不存在: ${dumpFile}`)
+    if (!existsSync(resolvedDumpFile)) {
+      throw new Error(`备份文件不存在: ${resolvedDumpFile}`)
     }
 
     this.spinner.start(`📥 正在恢复数据...`)
 
     try {
-      // 强制模式下，先备份目标环境
-      if (force) {
-        this.createTargetBackup(targetConfig, { verbose, dumpFolder })
-      }
-
       // 执行恢复
-      await this.executeRestore(dumpFile, targetConfig, { verbose, force })
+      this.executeRestore(resolvedDumpFile, targetConfig, { verbose })
 
       this.spinner.succeed(`✅ 数据恢复完成`)
 
       if (verbose) {
-        console.log(chalk.gray(`  恢复来源: ${path.relative(process.cwd(), dumpFile)}`))
+        console.log(chalk.gray(`  恢复来源: ${path.relative(process.cwd(), resolvedDumpFile)}`))
         console.log(chalk.gray(`  目标数据库: ${targetConfig.database}`))
       }
+
+      this.logManualCommands({ type: 'restore', dbConfig: targetConfig, dumpFile: resolvedDumpFile })
     } catch (error) {
       this.spinner.fail(`❌ 数据恢复失败: ${error instanceof Error ? error.message : String(error)}`)
-      throw error
-    }
-  }
-
-  /**
-   * 回滚数据
-   */
-  async rollbackData(
-    targetConfig: DatabaseConfig,
-    options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string } = {}
-  ): Promise<void> {
-    const { dryRun = false, verbose = false, dumpFolder = './dumps' } = options
-
-    const dbType = this.detectDatabaseType(targetConfig)
-    const extension = dbType === DatabaseType.MYSQL ? 'sql' : 'backup'
-    const targetBackupFile = path.resolve(dumpFolder, `target_${targetConfig.database}.${extension}`)
-
-    if (dryRun) {
-      console.log(chalk.blue(`🔍 [预览模式] 将回滚数据`))
-      if (verbose) {
-        console.log(chalk.gray(`  回滚文件: ${targetBackupFile}`))
-        console.log(chalk.gray(`  目标数据库: ${targetConfig.database}`))
-      }
-      return
-    }
-
-    if (!existsSync(targetBackupFile)) {
-      throw new Error(`没有找到目标备份文件: ${targetBackupFile}`)
-    }
-
-    this.spinner.start(`🔄 正在回滚数据...`)
-
-    try {
-      await this.executeRestore(targetBackupFile, targetConfig, {
-        verbose,
-        force: true,
-      })
-
-      this.spinner.succeed(`✅ 数据回滚完成`)
-
-      if (verbose) {
-        console.log(chalk.gray(`  回滚来源: ${path.relative(process.cwd(), targetBackupFile)}`))
-      }
-    } catch (error) {
-      this.spinner.fail(`❌ 数据回滚失败: ${error instanceof Error ? error.message : String(error)}`)
       throw error
     }
   }
@@ -249,84 +294,28 @@ export class DataSyncManager {
     options: {
       dryRun?: boolean
       verbose?: boolean
-      force?: boolean
       dumpFolder?: string
     }
   ) {
-    const { dryRun = false, verbose = false, force = false, dumpFolder = './dumps' } = options
+    const { dryRun = false, verbose = false, dumpFolder = './dumps' } = options
 
     if (dryRun) {
       console.log(chalk.blue('🔍 [预览模式] 同步操作流程:'))
       console.log(chalk.blue(`  1. 备份源数据库`))
-      if (force) {
-        console.log(chalk.blue(`  2. 备份目标数据库（强制模式）`))
-        console.log(chalk.blue(`  3. 恢复数据到目标数据库`))
-      } else {
-        console.log(chalk.blue(`  2. 恢复数据到目标数据库`))
-      }
-      console.log(chalk.blue('  4. 验证数据完整性'))
+      console.log(chalk.blue(`  2. 恢复数据到目标数据库`))
       return
     }
 
-    // 步骤1: 备份源环境数据
-    this.dumpData(sourceConfig, { dryRun, verbose, dumpFolder })
+    // 步骤1: 备份源环境数据到 {source}-to-{target}.sync
+    const syncFileName = `${sourceConfig.database}-to-${targetConfig.database}.sync`
+    this.dumpData(sourceConfig, { dryRun, verbose, dumpFolder, dumpFileName: syncFileName })
 
-    // 步骤2: 强制模式下备份目标环境
-    if (force) {
-      console.log(chalk.blue(`🔧 强制模式：创建目标数据库备份`))
-      this.createTargetBackup(targetConfig, { verbose, dumpFolder })
-    }
-
-    // 步骤3: 恢复到目标环境
-    this.restoreData(sourceConfig, targetConfig, {
+    // 步骤2: 恢复到目标环境（使用步骤1生成的 .sync 文件）
+    const dumpFile = path.resolve(dumpFolder, syncFileName)
+    this.restoreData(targetConfig, dumpFile, {
       dryRun,
       verbose,
-      force,
-      dumpFolder,
     })
-  }
-
-  /**
-   * 创建目标环境备份
-   */
-
-  private createTargetBackup(targetConfig: DatabaseConfig, options: { verbose?: boolean; dumpFolder?: string } = {}) {
-    const { verbose = false, dumpFolder = './dumps' } = options
-
-    const dbType = this.detectDatabaseType(targetConfig)
-    const extension = dbType === DatabaseType.MYSQL ? 'sql' : 'backup'
-    const targetBackupFile = path.resolve(dumpFolder, `target_${targetConfig.database}.${extension}`)
-
-    if (verbose) {
-      console.log(chalk.yellow(`📦 创建目标数据库备份: ${targetBackupFile}`))
-    }
-
-    try {
-      // 确保备份目录存在
-      if (!existsSync(dumpFolder)) {
-        mkdirSync(dumpFolder, { recursive: true })
-      }
-
-      // 检查目标数据库是否存在
-      const dbExists = this.checkDatabaseExists(targetConfig, {
-        verbose,
-      })
-
-      if (!dbExists) {
-        if (verbose) {
-          console.log(chalk.yellow(`⚠️  目标数据库 ${targetConfig.database} 不存在，跳过备份`))
-        }
-        return targetBackupFile
-      }
-
-      // 执行备份
-      this.executeDump(targetConfig, targetBackupFile, { verbose })
-
-      return targetBackupFile
-    } catch (error) {
-      console.warn(chalk.yellow(`⚠️  目标数据库备份失败: ${error instanceof Error ? error.message : String(error)}`))
-      throw error
-    }
   }
 
   /**
@@ -444,12 +433,8 @@ export class DataSyncManager {
   /**
    * 执行数据库恢复
    */
-  private async executeRestore(
-    dumpFile: string,
-    dbConfig: DatabaseConfig,
-    options: { verbose?: boolean; force?: boolean } = {}
-  ): Promise<void> {
-    const { verbose = false, force = false } = options
+  private executeRestore(dumpFile: string, dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}) {
+    const { verbose = false } = options
 
     if (!existsSync(dumpFile)) {
       throw new Error(`备份文件不存在: ${dumpFile}`)
@@ -458,35 +443,34 @@ export class DataSyncManager {
     const dbType = this.detectDatabaseType(dbConfig)
 
     if (dbType === DatabaseType.MYSQL) {
-      this.executeMySQLRestore(dumpFile, dbConfig, { verbose, force })
+      this.executeMySQLRestore(dumpFile, dbConfig, { verbose })
     } else {
-      await this.executePostgreSQLRestore(dumpFile, dbConfig, {
+      this.executePostgreSQLRestore(dumpFile, dbConfig, {
         verbose,
-        force,
       })
     }
   }
 
   /**
    * 执行 PostgreSQL 数据库恢复
+   *
+   * 如需手动执行，命令格式：
+   *   export PGPASSWORD="password" && pg_restore -h host -p 5432 -U username -d database --clean --if-exists --no-owner dump_file.dump
+   *
+   * 如需删除并重建数据库（手动执行）：
+   *   1. 终止连接: export PGPASSWORD="password" && psql -h host -p 5432 -U username -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'database' AND pid <> pg_backend_pid();"
+   *   2. 删除数据库: export PGPASSWORD="password" && psql -h host -p 5432 -U username -d postgres -c "DROP DATABASE IF EXISTS \"database\";"
+   *   3. 创建数据库: export PGPASSWORD="password" && psql -h host -p 5432 -U username -d postgres -c "CREATE DATABASE \"database\";"
+   *   4. 恢复数据: export PGPASSWORD="password" && pg_restore -h host -p 5432 -U username -d database --clean --if-exists --no-owner dump_file.dump
    */
-  private async executePostgreSQLRestore(
-    dumpFile: string,
-    dbConfig: DatabaseConfig,
-    options: { verbose?: boolean; force?: boolean } = {}
-  ): Promise<void> {
-    const { verbose = false, force = false } = options
+  private executePostgreSQLRestore(dumpFile: string, dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}) {
+    const { verbose = false } = options
 
     // 检查 pg_restore 是否存在
     try {
       execSync('which pg_restore', { stdio: 'pipe' })
     } catch {
       throw new Error('pg_restore 命令不存在，请安装 PostgreSQL 客户端工具')
-    }
-
-    // 强制模式下，先处理数据库连接和重建
-    if (force) {
-      await this.prepareDatabaseForRestore(dbConfig, { verbose })
     }
 
     // 检查目标数据库是否存在
@@ -522,24 +506,23 @@ export class DataSyncManager {
 
   /**
    * 执行 MySQL 数据库恢复
+   *
+   * 如需手动执行，命令格式：
+   *   mysql --user=username --host=host --port=3306 --password=password database < dump_file.sql
+   *
+   * 如需删除并重建数据库（手动执行）：
+   *   1. 删除数据库: mysql --user=username --host=host --port=3306 --password=password -e "DROP DATABASE IF EXISTS database;"
+   *   2. 创建数据库: mysql --user=username --host=host --port=3306 --password=password -e "CREATE DATABASE IF NOT EXISTS database DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+   *   3. 恢复数据: mysql --user=username --host=host --port=3306 --password=password database < dump_file.sql
    */
-  private executeMySQLRestore(
-    dumpFile: string,
-    dbConfig: DatabaseConfig,
-    options: { verbose?: boolean; force?: boolean } = {}
-  ) {
-    const { verbose = false, force = false } = options
+  private executeMySQLRestore(dumpFile: string, dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}) {
+    const { verbose = false } = options
 
     // 检查 mysql 是否存在
     try {
       execSync('which mysql', { stdio: 'pipe' })
     } catch {
       throw new Error('mysql 命令不存在，请安装 MySQL 客户端工具')
-    }
-
-    // 强制模式下，先处理数据库重建
-    if (force) {
-      this.prepareMySQLDatabaseForRestore(dbConfig, { verbose })
     }
 
     const command = `mysql --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=${dbConfig.password} ${dbConfig.database} < "${dumpFile}"`
@@ -556,98 +539,6 @@ export class DataSyncManager {
       execSync(command, { stdio: verbose ? 'inherit' : 'pipe' })
     } catch (error) {
       throw new Error(`MySQL 恢复失败: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  /**
-   * 为恢复准备数据库
-   */
-  private async prepareDatabaseForRestore(
-    dbConfig: DatabaseConfig,
-    options: { verbose?: boolean } = {}
-  ): Promise<void> {
-    const { verbose = false } = options
-
-    if (verbose) {
-      console.log(chalk.yellow('🔧 准备数据库进行恢复...'))
-    }
-
-    try {
-      // 终止所有连接到目标数据库的会话
-      const terminateCommand = `export PGPASSWORD="${dbConfig.password}" && psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.username} -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${dbConfig.database}' AND pid <> pg_backend_pid();"`
-
-      if (verbose) {
-        console.log(chalk.gray('  终止数据库连接...'))
-      }
-
-      try {
-        execSync(terminateCommand, { stdio: verbose ? 'inherit' : 'pipe' })
-      } catch {
-        // 忽略错误，可能没有连接需要终止
-      }
-
-      // 等待一秒确保连接完全断开
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // 删除并重建数据库
-      const dropCommand = `export PGPASSWORD="${dbConfig.password}" && psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.username} -d postgres -c "DROP DATABASE IF EXISTS \\"${dbConfig.database}\\";"`
-      const createCommand = `export PGPASSWORD="${dbConfig.password}" && psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.username} -d postgres -c "CREATE DATABASE \\"${dbConfig.database}\\";"`
-
-      if (verbose) {
-        console.log(chalk.gray('  删除旧数据库...'))
-      }
-      execSync(dropCommand, { stdio: verbose ? 'inherit' : 'pipe' })
-
-      if (verbose) {
-        console.log(chalk.gray('  创建新数据库...'))
-      }
-      execSync(createCommand, { stdio: verbose ? 'inherit' : 'pipe' })
-
-      if (verbose) {
-        console.log(chalk.green('✅ 数据库准备完成'))
-      }
-    } catch (error) {
-      throw new Error(`数据库准备失败: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  /**
-   * 为 MySQL 恢复准备数据库
-   */
-  private prepareMySQLDatabaseForRestore(dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}) {
-    const { verbose = false } = options
-
-    if (verbose) {
-      console.log(chalk.yellow('🔧 准备 MySQL 数据库进行恢复...'))
-    }
-
-    try {
-      // 检查数据库是否存在
-      const dbExists = this.checkDatabaseExists(dbConfig, { verbose })
-
-      if (dbExists) {
-        // 删除数据库
-        const dropCommand = `mysql --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=${dbConfig.password} -e "DROP DATABASE IF EXISTS ${dbConfig.database};"`
-
-        if (verbose) {
-          console.log(chalk.gray('  删除旧数据库...'))
-        }
-        execSync(dropCommand, { stdio: verbose ? 'inherit' : 'pipe' })
-      }
-
-      // 创建数据库
-      const createCommand = `mysql --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=${dbConfig.password} -e "CREATE DATABASE IF NOT EXISTS ${dbConfig.database} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"`
-
-      if (verbose) {
-        console.log(chalk.gray('  创建新数据库...'))
-      }
-      execSync(createCommand, { stdio: verbose ? 'inherit' : 'pipe' })
-
-      if (verbose) {
-        console.log(chalk.green('✅ MySQL 数据库准备完成'))
-      }
-    } catch (error) {
-      throw new Error(`MySQL 数据库准备失败: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }

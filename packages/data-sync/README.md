@@ -33,15 +33,15 @@ await syncManager.syncData({
 
 #### syncData(options: DataSyncOptions)
 
-同步数据，支持 dump、restore、sync、rollback 操作。
+同步数据，支持 `dump`、`restore`、`sync` 操作。`restore` 时必须传 `restoreDumpFile`（dump 文件路径）。
 
 #### dumpData(sourceConfig: DatabaseConfig, options?)
 
 备份数据库数据。
 
-#### restoreData(sourceConfig: DatabaseConfig, targetConfig: DatabaseConfig, options?)
+#### restoreData(targetConfig: DatabaseConfig, dumpFile: string, options?)
 
-恢复数据库数据。
+恢复数据库数据，必须传入 dump 文件路径。
 
 ### parseDatabaseUrl(url: string)
 
