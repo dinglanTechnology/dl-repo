@@ -1,6 +1,22 @@
 # DL Repo - Monorepo
 
-这是一个 monorepo 项目，每个包都可以独立发布到 GitHub Packages。使用 git commit hash 作为版本号。
+这是一个基于 pnpm workspaces 的 monorepo 项目，包含多个可独立发布的 npm 包。所有包都发布到 GitHub Packages，使用 git commit hash 作为版本号。
+
+## 快速开始
+
+```bash
+# 安装依赖
+pnpm install
+
+# 构建所有包
+pnpm build
+
+# 开发模式（监听文件变化）
+pnpm dev
+
+# 运行 lint
+pnpm lint
+```
 
 ## 项目结构
 
@@ -9,8 +25,7 @@ dl-repo/
 ├── packages/          # 可发布的 npm 包
 │   ├── common/       # 通用工具包（使用 lodash）
 │   ├── tracing/      # NestJS 链路追踪模块
-│   ├── data-sync/    # 数据库数据同步工具包
-│   └── docker-build/  # Docker 镜像构建工具包
+│   └── data-sync/    # 数据库数据同步工具包
 ├── .github/workflows/ # GitHub Actions 工作流
 ├── package.json      # 根 package.json
 ├── pnpm-workspace.yaml  # pnpm workspace 配置
@@ -124,16 +139,6 @@ node scripts/update-versions.js <commit-hash>
    npm publish
    ```
 
-当代码推送到 `main` 或 `master` 分支时，GitHub Actions 会自动：
-
-1. 获取当前 commit hash
-2. 更新所有包的版本号
-3. 构建所有包
-4. 发布到 GitHub Packages
-5. 创建 git tag
-
-**无需额外配置**：GitHub Actions 会自动使用 `GITHUB_TOKEN`。
-
 ## 安装发布的包
 
 ### 配置 npm 使用 GitHub Packages
@@ -172,19 +177,42 @@ npm install @dinglanTechnology/common@commit-a1b2c3d
 
 ### @dinglanTechnology/common
 
-通用工具包，使用 lodash 提供常用工具函数。
+通用工具包，提供常用工具函数。
+
+**功能**：
+
+- 字符串工具函数（如 `capitalize`）
+- 函数工具（如 `debounce`）
+- 基于 lodash 封装
+
+**文档**：详见 [packages/common/README.md](./packages/common/README.md)
 
 ### @dinglanTechnology/tracing
 
-NestJS 链路追踪模块，零配置、无侵入的分布式链路追踪。
+NestJS 链路追踪模块，提供零配置、无侵入的分布式链路追踪能力。
+
+**功能**：
+
+- 自动生成和传播 TraceID
+- HTTP 请求/响应追踪
+- 与 Winston 日志集成
+- 支持 Axios 请求追踪
+
+**文档**：详见 [packages/tracing/README.md](./packages/tracing/README.md)
 
 ### @dinglanTechnology/data-sync
 
 数据库数据同步工具包，支持 PostgreSQL 和 MySQL 的数据同步、备份和恢复。
 
-### @dinglanTechnology/docker-build
+**功能**：
 
-Docker 镜像构建工具包，支持本地 Docker 镜像构建和推送。
+- 数据库备份（dump）
+- 数据库恢复（restore）
+- 数据同步（sync）
+- 支持 PostgreSQL 和 MySQL
+- 自动检测数据库类型
+
+**文档**：详见 [packages/data-sync/README.md](./packages/data-sync/README.md)
 
 ## 创建新包
 
@@ -215,16 +243,28 @@ Docker 镜像构建工具包，支持本地 Docker 镜像构建和推送。
 
 包之间可以互相引用，但需要注意避免循环依赖。详见 [包之间互相引用指南](./docs/packages-interdependency.md)。
 
+## 本地开发调试
+
+如何在本地开发和调试这些包？详见 [本地开发调试指南](./docs/local-development.md)。
+
+主要方案：
+
+- **Workspace 自动链接**：在 monorepo 内部使用 `workspace:*` 协议
+- **pnpm link**：跨项目调试，使用全局链接
+- **开发模式**：使用 `pnpm dev` 启动所有包的 watch 模式
+
 ## 技术栈
 
-- **包管理**: pnpm workspaces
+- **包管理**: pnpm workspaces (>=9.0.0)
 - **构建工具**: TypeScript Compiler (tsc)
 - **输出格式**: CommonJS (CJS)
-- **类型检查**: TypeScript
+- **类型检查**: TypeScript (>=5.3.3)
 - **代码规范**: ESLint + Prettier
+- **Git Hooks**: Husky + lint-staged
 - **CI/CD**: GitHub Actions
 - **版本管理**: Git commit hash
 - **包仓库**: GitHub Packages
+- **Node.js**: >=18.0.0
 
 ## GitHub Actions
 
