@@ -28,7 +28,7 @@ export function createTracedAxios(config?: CreateAxiosDefaults): AxiosInstance {
 
   // 请求拦截器：自动添加 traceId
   instance.interceptors.request.use(
-    (config) => {
+    config => {
       // 使用 ClsServiceManager 获取当前上下文
       const cls = ClsServiceManager.getClsService()
       const traceId = cls?.getId()
@@ -48,7 +48,7 @@ export function createTracedAxios(config?: CreateAxiosDefaults): AxiosInstance {
 
       return config
     },
-    (error) => Promise.reject(error),
+    error => Promise.reject(error instanceof Error ? error : new Error(String(error)))
   )
 
   return instance

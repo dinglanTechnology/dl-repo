@@ -22,7 +22,7 @@ export class AxiosTracingSetup implements OnModuleInit {
     private readonly httpService: HttpService,
     private readonly cls: ClsService,
     @Inject(WINSTON_MODULE_PROVIDER)
-    private readonly logger: Logger,
+    private readonly logger: Logger
   ) {}
 
   onModuleInit() {
@@ -64,13 +64,13 @@ export class AxiosTracingSetup implements OnModuleInit {
 
         return config
       },
-      (error) => {
+      error => {
         this.logger.error('Outbound HTTP Request Error', {
           type: 'http_outbound_request_error',
           error: error.message,
         })
-        return Promise.reject(error)
-      },
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+      }
     )
   }
 
@@ -111,7 +111,7 @@ export class AxiosTracingSetup implements OnModuleInit {
         })
 
         return Promise.reject(error)
-      },
+      }
     )
   }
 }

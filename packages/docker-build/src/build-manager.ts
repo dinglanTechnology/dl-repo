@@ -63,11 +63,11 @@ export class BuildManager {
       await this.prepareBuildContext(dockerConfig, options.dockerfile)
 
       // 构建镜像
-      await this.performBuild(imageInfo, options, dockerConfig)
+      this.performBuild(imageInfo, options, dockerConfig)
 
       // 推送镜像（如果需要）
       if (options.push) {
-        await this.pushImage(imageInfo, dockerConfig, options.registryUser, options.registryPassword)
+        this.pushImage(imageInfo, dockerConfig, options.registryUser, options.registryPassword)
       }
 
       const buildTime = Date.now() - startTime
@@ -129,7 +129,7 @@ export class BuildManager {
       await execAsync('docker info')
 
       this.spinner.succeed('✅ Docker环境验证成功')
-    } catch (error) {
+    } catch {
       this.spinner.fail('❌ Docker环境验证失败')
       throw new Error('Docker未安装或未运行。请确保Docker已安装并且守护进程正在运行。')
     }
@@ -160,7 +160,7 @@ export class BuildManager {
   /**
    * 执行构建
    */
-  private async performBuild(imageInfo: any, options: BuildOptions, dockerConfig: any): Promise<void> {
+  private performBuild(imageInfo: any, options: BuildOptions, dockerConfig: any): void {
     this.spinner.start(`🔨 构建镜像: ${imageInfo.fullImageName}`)
 
     try {
@@ -200,18 +200,13 @@ export class BuildManager {
   /**
    * 推送镜像
    */
-  private async pushImage(
-    imageInfo: any,
-    dockerConfig: any,
-    registryUser?: string,
-    registryPassword?: string,
-  ): Promise<void> {
+  private pushImage(imageInfo: any, dockerConfig: any, registryUser?: string, registryPassword?: string): void {
     this.spinner.start(`📤 推送镜像: ${imageInfo.fullImageName}`)
 
     try {
       // 登录到镜像仓库（如果需要）
       if (registryUser && registryPassword) {
-        await this.loginToRegistry(dockerConfig.registry, registryUser, registryPassword)
+        this.loginToRegistry(dockerConfig.registry, registryUser, registryPassword)
       }
 
       // 推送镜像
@@ -227,12 +222,12 @@ export class BuildManager {
   /**
    * 登录到镜像仓库
    */
-  private async loginToRegistry(registry: string, username: string, password: string): Promise<void> {
+  private loginToRegistry(registry: string, username: string, password: string): void {
     try {
       const command = `echo "${password}" | docker login ${registry} -u ${username} --password-stdin`
       execSync(command, { stdio: 'inherit' })
       console.log(chalk.green('✅ 镜像仓库登录成功'))
-    } catch (error) {
+    } catch {
       console.warn(chalk.yellow('⚠️  镜像仓库登录失败，但继续推送'))
     }
   }
@@ -265,11 +260,11 @@ export class BuildManager {
     try {
       const filter = repository ? `--filter reference=${repository}` : ''
       const { stdout } = await execAsync(
-        `docker images ${filter} --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}\t{{.Size}}"`,
+        `docker images ${filter} --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}\t{{.Size}}"`
       )
 
-      const lines = stdout.split('\n').filter((line) => line.trim())
-      const images = lines.slice(1).map((line) => {
+      const lines = stdout.split('\n').filter(line => line.trim())
+      const images = lines.slice(1).map(line => {
         const [repository, tag, id, created, size] = line.split('\t')
         return { repository, tag, id, created, size }
       })
@@ -301,7 +296,7 @@ export class BuildManager {
       const { stdout: imageCount } = await execAsync('docker images -q | wc -l')
       const { stdout: containerCount } = await execAsync('docker ps -a -q | wc -l')
       const { stdout: systemInfo } = await execAsync(
-        'docker system df --format "table {{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}"',
+        'docker system df --format "table {{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}"'
       )
 
       return {
@@ -321,7 +316,7 @@ export class BuildManager {
     try {
       await this.validateDockerEnvironment()
       return true
-    } catch (error) {
+    } catch {
       return false
     }
   }

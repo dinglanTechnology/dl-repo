@@ -22,7 +22,7 @@ export class TracingInterceptor implements NestInterceptor {
   constructor(
     private readonly cls: ClsService,
     @Inject(WINSTON_MODULE_PROVIDER)
-    private readonly logger: Logger,
+    private readonly logger: Logger
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -69,7 +69,7 @@ export class TracingInterceptor implements NestInterceptor {
           })
         },
       }),
-      catchError((error) => {
+      catchError(error => {
         // 请求失败
         const duration = Date.now() - startTime
         this.logger.error('HTTP Error', {
@@ -82,7 +82,7 @@ export class TracingInterceptor implements NestInterceptor {
           statusCode: error.status || 500,
         })
         throw error
-      }),
+      })
     )
   }
 

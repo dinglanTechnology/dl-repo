@@ -44,7 +44,7 @@ export class DataSyncManager {
   /**
    * 同步数据
    */
-  async syncData(options: DataSyncOptions): Promise<void> {
+  syncData(options: DataSyncOptions) {
     const { sourceConfig, targetConfig, action = 'sync', dryRun = false } = options
 
     console.log(chalk.cyan('🔄 开始数据同步...'))
@@ -56,14 +56,14 @@ export class DataSyncManager {
     try {
       switch (action) {
         case 'dump':
-          await this.dumpData(sourceConfig, {
+          this.dumpData(sourceConfig, {
             dryRun,
             verbose: options.verbose,
             dumpFolder: options.dumpFolder,
           })
           break
         case 'restore':
-          await this.restoreData(sourceConfig, targetConfig, {
+          this.restoreData(sourceConfig, targetConfig, {
             dryRun,
             verbose: options.verbose,
             force: options.force,
@@ -71,7 +71,7 @@ export class DataSyncManager {
           })
           break
         case 'rollback':
-          await this.rollbackData(targetConfig, {
+          this.rollbackData(targetConfig, {
             dryRun,
             verbose: options.verbose,
             dumpFolder: options.dumpFolder,
@@ -79,7 +79,7 @@ export class DataSyncManager {
           break
         case 'sync':
         default:
-          await this.performSync(sourceConfig, targetConfig, {
+          this.performSync(sourceConfig, targetConfig, {
             dryRun,
             verbose: options.verbose,
             force: options.force,
@@ -89,19 +89,17 @@ export class DataSyncManager {
       }
 
       console.log(chalk.green('✅ 数据同步完成!'))
-    } catch (error) {
-      console.error(chalk.red('❌ 数据同步失败:'), error)
-      throw error
+    } catch (err) {
+      console.error(chalk.red('❌ 数据同步失败:'), err)
+      throw err
     }
   }
 
   /**
    * 备份数据
    */
-  async dumpData(
-    sourceConfig: DatabaseConfig,
-    options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string } = {},
-  ): Promise<string> {
+
+  dumpData(sourceConfig: DatabaseConfig, options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string } = {}) {
     const { dryRun = false, verbose = false, dumpFolder = './dumps' } = options
 
     const dbType = this.detectDatabaseType(sourceConfig)
@@ -126,7 +124,7 @@ export class DataSyncManager {
       }
 
       // 执行备份
-      await this.executeDump(sourceConfig, dumpFile, { verbose })
+      this.executeDump(sourceConfig, dumpFile, { verbose })
 
       this.spinner.succeed(`✅ 数据备份完成: ${path.relative(process.cwd(), dumpFile)}`)
 
@@ -153,7 +151,7 @@ export class DataSyncManager {
       verbose?: boolean
       force?: boolean
       dumpFolder?: string
-    } = {},
+    } = {}
   ): Promise<void> {
     const { dryRun = false, verbose = false, force = false, dumpFolder = './dumps' } = options
 
@@ -179,7 +177,7 @@ export class DataSyncManager {
     try {
       // 强制模式下，先备份目标环境
       if (force) {
-        await this.createTargetBackup(targetConfig, { verbose, dumpFolder })
+        this.createTargetBackup(targetConfig, { verbose, dumpFolder })
       }
 
       // 执行恢复
@@ -202,7 +200,7 @@ export class DataSyncManager {
    */
   async rollbackData(
     targetConfig: DatabaseConfig,
-    options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string } = {},
+    options: { dryRun?: boolean; verbose?: boolean; dumpFolder?: string } = {}
   ): Promise<void> {
     const { dryRun = false, verbose = false, dumpFolder = './dumps' } = options
 
@@ -245,7 +243,7 @@ export class DataSyncManager {
   /**
    * 执行完整的同步操作
    */
-  private async performSync(
+  private performSync(
     sourceConfig: DatabaseConfig,
     targetConfig: DatabaseConfig,
     options: {
@@ -253,8 +251,8 @@ export class DataSyncManager {
       verbose?: boolean
       force?: boolean
       dumpFolder?: string
-    },
-  ): Promise<void> {
+    }
+  ) {
     const { dryRun = false, verbose = false, force = false, dumpFolder = './dumps' } = options
 
     if (dryRun) {
@@ -271,16 +269,16 @@ export class DataSyncManager {
     }
 
     // 步骤1: 备份源环境数据
-    await this.dumpData(sourceConfig, { dryRun, verbose, dumpFolder })
+    this.dumpData(sourceConfig, { dryRun, verbose, dumpFolder })
 
     // 步骤2: 强制模式下备份目标环境
     if (force) {
       console.log(chalk.blue(`🔧 强制模式：创建目标数据库备份`))
-      await this.createTargetBackup(targetConfig, { verbose, dumpFolder })
+      this.createTargetBackup(targetConfig, { verbose, dumpFolder })
     }
 
     // 步骤3: 恢复到目标环境
-    await this.restoreData(sourceConfig, targetConfig, {
+    this.restoreData(sourceConfig, targetConfig, {
       dryRun,
       verbose,
       force,
@@ -291,10 +289,8 @@ export class DataSyncManager {
   /**
    * 创建目标环境备份
    */
-  private async createTargetBackup(
-    targetConfig: DatabaseConfig,
-    options: { verbose?: boolean; dumpFolder?: string } = {},
-  ): Promise<string> {
+
+  private createTargetBackup(targetConfig: DatabaseConfig, options: { verbose?: boolean; dumpFolder?: string } = {}) {
     const { verbose = false, dumpFolder = './dumps' } = options
 
     const dbType = this.detectDatabaseType(targetConfig)
@@ -312,7 +308,7 @@ export class DataSyncManager {
       }
 
       // 检查目标数据库是否存在
-      const dbExists = await this.checkDatabaseExists(targetConfig, {
+      const dbExists = this.checkDatabaseExists(targetConfig, {
         verbose,
       })
 
@@ -324,7 +320,7 @@ export class DataSyncManager {
       }
 
       // 执行备份
-      await this.executeDump(targetConfig, targetBackupFile, { verbose })
+      this.executeDump(targetConfig, targetBackupFile, { verbose })
 
       return targetBackupFile
     } catch (error) {
@@ -336,7 +332,7 @@ export class DataSyncManager {
   /**
    * 检查数据库是否存在
    */
-  private async checkDatabaseExists(dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}): Promise<boolean> {
+  private checkDatabaseExists(dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}): boolean {
     const { verbose = false } = options
     const dbType = this.detectDatabaseType(dbConfig)
 
@@ -359,7 +355,7 @@ export class DataSyncManager {
     } catch (error) {
       if (verbose) {
         console.log(
-          chalk.yellow(`⚠️  无法检查数据库是否存在: ${error instanceof Error ? error.message : String(error)}`),
+          chalk.yellow(`⚠️  无法检查数据库是否存在: ${error instanceof Error ? error.message : String(error)}`)
         )
       }
       return false
@@ -369,29 +365,21 @@ export class DataSyncManager {
   /**
    * 执行数据库备份
    */
-  private async executeDump(
-    dbConfig: DatabaseConfig,
-    dumpFile: string,
-    options: { verbose?: boolean } = {},
-  ): Promise<void> {
+  private executeDump(dbConfig: DatabaseConfig, dumpFile: string, options: { verbose?: boolean } = {}): void {
     const { verbose = false } = options
     const dbType = this.detectDatabaseType(dbConfig)
 
     if (dbType === DatabaseType.MYSQL) {
-      await this.executeMySQLDump(dbConfig, dumpFile, { verbose })
+      this.executeMySQLDump(dbConfig, dumpFile, { verbose })
     } else {
-      await this.executePostgreSQLDump(dbConfig, dumpFile, { verbose })
+      this.executePostgreSQLDump(dbConfig, dumpFile, { verbose })
     }
   }
 
   /**
    * 执行 PostgreSQL 数据库备份
    */
-  private async executePostgreSQLDump(
-    dbConfig: DatabaseConfig,
-    dumpFile: string,
-    options: { verbose?: boolean } = {},
-  ): Promise<void> {
+  private executePostgreSQLDump(dbConfig: DatabaseConfig, dumpFile: string, options: { verbose?: boolean } = {}) {
     const { verbose = false } = options
 
     // 检查 pg_dump 是否存在
@@ -426,11 +414,7 @@ export class DataSyncManager {
   /**
    * 执行 MySQL 数据库备份
    */
-  private async executeMySQLDump(
-    dbConfig: DatabaseConfig,
-    dumpFile: string,
-    options: { verbose?: boolean } = {},
-  ): Promise<void> {
+  private executeMySQLDump(dbConfig: DatabaseConfig, dumpFile: string, options: { verbose?: boolean } = {}) {
     const { verbose = false } = options
 
     // 检查 mysqldump 是否存在
@@ -445,8 +429,8 @@ export class DataSyncManager {
     if (verbose) {
       console.log(
         chalk.gray(
-          `执行命令: mysqldump ${dbConfig.database} --result-file=${dumpFile} --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=*** --set-gtid-purged=OFF --single-transaction --routines --triggers`,
-        ),
+          `执行命令: mysqldump ${dbConfig.database} --result-file=${dumpFile} --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=*** --set-gtid-purged=OFF --single-transaction --routines --triggers`
+        )
       )
     }
 
@@ -463,7 +447,7 @@ export class DataSyncManager {
   private async executeRestore(
     dumpFile: string,
     dbConfig: DatabaseConfig,
-    options: { verbose?: boolean; force?: boolean } = {},
+    options: { verbose?: boolean; force?: boolean } = {}
   ): Promise<void> {
     const { verbose = false, force = false } = options
 
@@ -474,7 +458,7 @@ export class DataSyncManager {
     const dbType = this.detectDatabaseType(dbConfig)
 
     if (dbType === DatabaseType.MYSQL) {
-      await this.executeMySQLRestore(dumpFile, dbConfig, { verbose, force })
+      this.executeMySQLRestore(dumpFile, dbConfig, { verbose, force })
     } else {
       await this.executePostgreSQLRestore(dumpFile, dbConfig, {
         verbose,
@@ -489,7 +473,7 @@ export class DataSyncManager {
   private async executePostgreSQLRestore(
     dumpFile: string,
     dbConfig: DatabaseConfig,
-    options: { verbose?: boolean; force?: boolean } = {},
+    options: { verbose?: boolean; force?: boolean } = {}
   ): Promise<void> {
     const { verbose = false, force = false } = options
 
@@ -506,7 +490,7 @@ export class DataSyncManager {
     }
 
     // 检查目标数据库是否存在
-    const dbExists = await this.checkDatabaseExists(dbConfig, { verbose })
+    const dbExists = this.checkDatabaseExists(dbConfig, { verbose })
 
     let command = `export PGPASSWORD="${dbConfig.password}" && pg_restore`
     command += ` -h ${dbConfig.host}`
@@ -539,11 +523,11 @@ export class DataSyncManager {
   /**
    * 执行 MySQL 数据库恢复
    */
-  private async executeMySQLRestore(
+  private executeMySQLRestore(
     dumpFile: string,
     dbConfig: DatabaseConfig,
-    options: { verbose?: boolean; force?: boolean } = {},
-  ): Promise<void> {
+    options: { verbose?: boolean; force?: boolean } = {}
+  ) {
     const { verbose = false, force = false } = options
 
     // 检查 mysql 是否存在
@@ -555,7 +539,7 @@ export class DataSyncManager {
 
     // 强制模式下，先处理数据库重建
     if (force) {
-      await this.prepareMySQLDatabaseForRestore(dbConfig, { verbose })
+      this.prepareMySQLDatabaseForRestore(dbConfig, { verbose })
     }
 
     const command = `mysql --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=${dbConfig.password} ${dbConfig.database} < "${dumpFile}"`
@@ -563,8 +547,8 @@ export class DataSyncManager {
     if (verbose) {
       console.log(
         chalk.gray(
-          `执行命令: mysql --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=*** ${dbConfig.database} < "${dumpFile}"`,
-        ),
+          `执行命令: mysql --user=${dbConfig.username} --host=${dbConfig.host} --port=${dbConfig.port} --password=*** ${dbConfig.database} < "${dumpFile}"`
+        )
       )
     }
 
@@ -580,7 +564,7 @@ export class DataSyncManager {
    */
   private async prepareDatabaseForRestore(
     dbConfig: DatabaseConfig,
-    options: { verbose?: boolean } = {},
+    options: { verbose?: boolean } = {}
   ): Promise<void> {
     const { verbose = false } = options
 
@@ -603,7 +587,7 @@ export class DataSyncManager {
       }
 
       // 等待一秒确保连接完全断开
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       // 删除并重建数据库
       const dropCommand = `export PGPASSWORD="${dbConfig.password}" && psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.username} -d postgres -c "DROP DATABASE IF EXISTS \\"${dbConfig.database}\\";"`
@@ -630,10 +614,7 @@ export class DataSyncManager {
   /**
    * 为 MySQL 恢复准备数据库
    */
-  private async prepareMySQLDatabaseForRestore(
-    dbConfig: DatabaseConfig,
-    options: { verbose?: boolean } = {},
-  ): Promise<void> {
+  private prepareMySQLDatabaseForRestore(dbConfig: DatabaseConfig, options: { verbose?: boolean } = {}) {
     const { verbose = false } = options
 
     if (verbose) {
@@ -642,7 +623,7 @@ export class DataSyncManager {
 
     try {
       // 检查数据库是否存在
-      const dbExists = await this.checkDatabaseExists(dbConfig, { verbose })
+      const dbExists = this.checkDatabaseExists(dbConfig, { verbose })
 
       if (dbExists) {
         // 删除数据库

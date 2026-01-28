@@ -49,7 +49,7 @@ import * as winston from 'winston'
           format: winston.format.combine(
             winston.format.timestamp(),
             createTraceFormat(), // ✨ 自动添加 traceId
-            winston.format.json(),
+            winston.format.json()
           ),
         }),
       ],
