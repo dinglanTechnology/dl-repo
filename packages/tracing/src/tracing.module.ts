@@ -4,7 +4,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core'
 import { ClsModule } from 'nestjs-cls'
 import { AxiosTracingSetup } from './axios-tracing.setup'
 import { TracingInterceptor } from './tracing.interceptor'
-import { DEFAULT_TRACING_OPTIONS, TracingOptions } from './tracing.options'
+import { DEFAULT_TRACING_OPTIONS, TracingOptions, createDefaultIdGenerator, setTracingOptions } from './tracing.options'
 
 /**
  * 无侵入式链路追踪模块
@@ -16,18 +16,12 @@ import { DEFAULT_TRACING_OPTIONS, TracingOptions } from './tracing.options'
  * 4. 自动记录请求耗时
  * 5. 支持从 nginx ingress 传入 traceId
  *
- * 使用方式：
- * 只需在 AppModule 中导入即可，无需在业务代码中做任何修改
- *
  * @example
  * ```typescript
- * import { TracingModule } from '@dinglan/nestjs-tracing';
+ * import { TracingModule } from '@dinglanTechnology/tracing';
  *
  * @Module({
- *   imports: [
- *     TracingModule.forRoot(),
- *     // ... 其他模块
- *   ]
+ *   imports: [TracingModule.forRoot()],
  * })
  * export class AppModule {}
  * ```
@@ -41,10 +35,17 @@ export class TracingModule {
       ...options,
     }
 
+    // 若用户覆盖了 incomingHeaders 但未提供 idGenerator，
+    // 需要重建默认 generator 以读取新的 header 列表。
+    if (!options?.idGenerator && options?.incomingHeaders) {
+      mergedOptions.idGenerator = createDefaultIdGenerator(mergedOptions.incomingHeaders)
+    }
+
+    setTracingOptions(mergedOptions)
+
     return {
       module: TracingModule,
       imports: [
-        // CLS 模块配置
         ClsModule.forRoot({
           global: true,
           middleware: {
@@ -53,30 +54,24 @@ export class TracingModule {
             idGenerator: mergedOptions.idGenerator,
             setup: (cls, req, res) => {
               const traceId = cls.getId()
-              // 设置响应头
               res.setHeader('x-request-id', traceId)
-              // 设置请求上下文
               cls.set('method', req.method)
               cls.set('url', req.originalUrl || req.url)
               cls.set('startTime', Date.now())
-              cls.set('_tracing_options', mergedOptions)
             },
           },
         }),
-        // HttpModule 配置
         HttpModule.registerAsync({
           useFactory: () => ({
-            timeout: mergedOptions.httpTimeout || 60000,
+            timeout: mergedOptions.httpTimeout ?? 60000,
           }),
         }),
       ],
       providers: [
-        // 全局拦截器：自动记录请求日志
         {
           provide: APP_INTERCEPTOR,
           useClass: TracingInterceptor,
         },
-        // Axios 拦截器设置：自动传播 traceId
         AxiosTracingSetup,
       ],
       exports: [ClsModule],

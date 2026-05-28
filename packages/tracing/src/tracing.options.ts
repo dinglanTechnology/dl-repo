@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'crypto'
 
 /**
  * 链路追踪配置选项
@@ -21,6 +21,23 @@ export interface TracingOptions {
 }
 
 /**
+ * 构造默认 idGenerator——闭包绑定 incomingHeaders，
+ * 使用户覆盖 incomingHeaders 时仍按预期工作。
+ */
+export function createDefaultIdGenerator(incomingHeaders: string[]) {
+  return (req: any): string => {
+    const headers = req?.headers ?? {}
+    for (const headerName of incomingHeaders) {
+      const value = headers[headerName]
+      if (typeof value === 'string' && value) {
+        return value
+      }
+    }
+    return randomUUID().replace(/-/g, '')
+  }
+}
+
+/**
  * 默认配置
  */
 export const DEFAULT_TRACING_OPTIONS: TracingOptions = {
@@ -28,16 +45,36 @@ export const DEFAULT_TRACING_OPTIONS: TracingOptions = {
   incomingHeaders: ['req_id', 'x-request-id', 'traceparent'],
   outgoingHeaders: ['x-request-id', 'req_id'],
   httpTimeout: 30000,
-  idGenerator: (req: any) => {
-    const headers = req.headers
-    // 按优先级提取 traceId
-    for (const headerName of DEFAULT_TRACING_OPTIONS.incomingHeaders) {
-      const value = headers[headerName]
-      if (typeof value === 'string' && value) {
-        return value
-      }
-    }
-    // 生成新的 UUID（去掉短横线）
-    return uuidv4().replace(/-/g, '')
-  },
+  idGenerator: createDefaultIdGenerator(['req_id', 'x-request-id', 'traceparent']),
+}
+
+/**
+ * 模块级 options 注册表：
+ * TracingModule.forRoot() 调用时写入，
+ * 其它模块（拦截器、axios setup、global-axios）按需读取。
+ *
+ * 避免把静态配置塞进 CLS 反复读写。
+ */
+let activeOptions: TracingOptions = DEFAULT_TRACING_OPTIONS
+
+export function setTracingOptions(options: TracingOptions): void {
+  activeOptions = options
+}
+
+export function getTracingOptions(): TracingOptions {
+  return activeOptions
+}
+
+/**
+ * 将 traceId 写入 outgoingHeaders 列出的所有 header 名上。
+ * setter 抽象同时兼容 axios v1 的 AxiosHeaders 与普通对象。
+ */
+export function applyTraceHeaders(
+  setter: (name: string, value: string) => void,
+  traceId: string,
+  outgoingHeaders: string[]
+): void {
+  for (const headerName of outgoingHeaders) {
+    setter(headerName, traceId)
+  }
 }

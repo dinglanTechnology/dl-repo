@@ -1,12 +1,12 @@
 /**
- * @dinglan/nestjs-tracing
+ * @dinglanTechnology/tracing
  *
  * 零配置、无侵入的 NestJS 链路追踪模块
  * 一键接入分布式链路追踪
  *
  * @example
  * ```typescript
- * import { TracingModule } from '@dinglan/nestjs-tracing';
+ * import { TracingModule } from '@dinglanTechnology/tracing';
  *
  * @Module({
  *   imports: [

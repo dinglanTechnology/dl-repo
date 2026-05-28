@@ -13,7 +13,7 @@ import { ClsServiceManager } from 'nestjs-cls'
  *
  * @example
  * ```typescript
- * import { getTraceId } from '@dinglan/nestjs-tracing';
+ * import { getTraceId } from '@dinglanTechnology/tracing';
  *
  * const traceId = getTraceId();
  * console.log('当前请求 traceId:', traceId);
